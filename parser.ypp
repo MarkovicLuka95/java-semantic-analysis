@@ -1,0 +1,329 @@
+%{
+#include <iostream>
+#include <string>
+#include <cstdlib>
+#include <map>
+
+#include <map>
+#include "type.hpp"
+
+#define YYDEBUG 1
+
+using namespace std;
+
+void yyerror(string s) {
+    cerr << s << endl;
+    exit(EXIT_FAILURE);
+}
+extern int yylex();
+
+string TmpFuctionName;
+string TmpClassName;
+int works=1;
+
+map<string, vector<ClassVariable*>> table;
+map<string, vector<Variable*>> tablica_funkcije;
+%}
+
+%token class_token
+%token <s> public_token private_token int_token double_token void_token string_token id_token text_token
+%token <number> intNum_token
+%token <d> doubleNum_token
+
+
+
+%type <C> Class
+%type <Nv> Body
+%type <N> Statement
+%type <s> Modifier Type
+%type <S> VariableArray
+%type <I> FunctionBody
+%type <e> E;
+%type <i> FunctionStatement Declaration
+
+%union{
+    int number;
+    double d;
+    string *s;
+    Class *C;
+    Naredba *N;
+    Izraz *e;
+    Iskaz *i;
+    vector<Naredba*> *Nv;
+    vector<string> *S;
+    vector<Iskaz*> *I;
+}
+
+
+%left '+'
+
+%%
+
+
+Program: Program Class {
+   if(works){
+        cout << "Program bez semanticke greske!" << endl;
+   }
+}
+| Class {
+
+}
+;
+
+Class: class_token id_token {
+
+    TmpClassName=*$2;
+
+    map<string, vector<ClassVariable*>>::iterator tmp=table.find(TmpClassName);
+    if(tmp!=table.end()){
+        cout << "nije moguce redifinisati klase. klasa: " << TmpClassName << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    table[TmpClassName]= vector<ClassVariable*>();
+
+} '{' Body '}' {
+
+    $$ = new Class(*$2, *$5, tablica_funkcije);
+    tablica_funkcije.clear();
+
+    cout << $$->getName() << endl;
+    if($$->typechack()){
+        cout << "----------Correct" << endl;
+    }
+    else {
+        works=0;
+        cout << "----------Mistake" << endl;
+    }
+    cout <<endl;
+    delete $2;
+
+
+}
+;
+
+Body:  Body Statement {
+    $$=$1;
+    $$->push_back($2);
+}
+| Statement {
+    $$= new vector<Naredba*>();
+    $$->push_back($1);
+}
+;
+
+Statement: Modifier Type VariableArray ';' {
+    ClassVariable *pom;
+
+
+
+
+    for(unsigned i=0; i<$3->size(); i++){
+        for(unsigned j=0; j<table[TmpClassName].size(); j++){
+            if((*$3)[i]==table[TmpClassName][j]->getName() && table[TmpClassName][j]->getIndikator()==0){
+                cout << "nije moguce redifinisati promenljivu: "<< (*$3)[i] << endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+        pom = new ClassVariable(*$1,new Variable((*$3)[i],*$2), 0);
+        table[TmpClassName].push_back(pom);
+    }
+
+    $$ = new Class_Variable_Declaration(*$1, *$2, *$3);
+
+
+
+    delete $1;
+    delete $2;
+}
+| Modifier Type id_token '(' ')' {
+    TmpFuctionName=*$3;
+
+    map<string, vector<Variable*>>::iterator tmp=tablica_funkcije.find(TmpFuctionName);
+    if(tmp!=tablica_funkcije.end()){
+        cout << "nije moguce redifinisati funkciju: " << TmpFuctionName << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    tablica_funkcije[TmpFuctionName]= vector<Variable*>();
+
+
+
+    for(unsigned j=0; j<table[TmpClassName].size(); j++){
+            if((*$3)==table[TmpClassName][j]->getName() && table[TmpClassName][j]->getIndikator()==1){
+                cout << "nije moguce redifinisati funkciju: "<< (*$3) << endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+
+
+    ClassVariable *pom = new ClassVariable(*$1, new Variable(*$3,*$2),1);
+    table[TmpClassName].push_back(pom);
+
+} '{'  FunctionBody ';' '}' { //probaj dole tackuzarez
+
+
+
+
+
+    $$=new Function(*$1, *$2, *$3, *$8);
+
+
+    delete $1;
+    delete $2;
+    delete $3;
+}
+;
+
+Modifier: public_token {$$=$1;}
+| private_token        {$$=$1;}
+;
+
+Type: int_token
+| double_token  {$$=$1;}
+| string_token  {$$=$1;}
+| void_token    {$$=$1;}
+| id_token      {$$=$1;}
+;
+
+VariableArray: VariableArray ',' id_token{
+    $$=$1;
+    $$->push_back(*$3);
+    delete $3;
+}
+| id_token {
+    $$=new vector<string>();
+    $$->push_back(*$1);
+    delete $1;
+}
+;
+
+FunctionBody: FunctionBody ';' FunctionStatement {
+   $$=$1;
+   $$->push_back($3);
+}
+| FunctionStatement {
+    $$=new vector<Iskaz*>();
+    $$->push_back($1);
+}
+;
+
+FunctionStatement: Declaration {$$=$1;}
+| id_token '=' E    {
+
+    $$ = new Iskaz_Dodela(*$1,$3);
+    delete $1;
+}
+| E                 {$$ = new Izraz_Iskaz($1);}
+;
+
+Declaration: Type id_token  {
+
+
+
+    for(unsigned j=0; j<tablica_funkcije[TmpFuctionName].size(); j++){
+            if((*$2)==tablica_funkcije[TmpFuctionName][j]->getName()){
+                cout << "nije moguce redifinisati promenljivu u funkciji: "<< (*$2) << endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+
+
+    Variable *pom = new Variable(*$2, *$1);
+    tablica_funkcije[TmpFuctionName].push_back(pom);
+
+
+
+
+    $$ = new Deklaracija(*$1,*$2);
+    delete $1;
+    delete $2;
+}
+| Type id_token '=' E       {
+
+
+
+    for(unsigned j=0; j<tablica_funkcije[TmpFuctionName].size(); j++){
+            if((*$2)==tablica_funkcije[TmpFuctionName][j]->getName()){
+                cout << "nije moguce redifinisati promenljivu u funkciji: "<< (*$2) << endl;
+                exit(EXIT_FAILURE);
+            }
+        }
+
+
+    Variable *pom = new Variable(*$2, *$1);
+    tablica_funkcije[TmpFuctionName].push_back(pom);
+
+    $$ = new DeklaracijaIDodela(*$1, *$2, $4);
+    delete $1;
+    delete $2;
+}
+;
+
+E: id_token                         {
+
+    Variable *p;
+    bool nasao = false;
+
+
+    for(unsigned i = 0; i<tablica_funkcije[TmpFuctionName].size(); i++){
+        if(*$1==tablica_funkcije[TmpFuctionName][i]->getName()){
+            p= new Variable(*$1,tablica_funkcije[TmpFuctionName][i]->getType());
+            nasao=true;
+        }
+    }
+    if(!nasao){
+        for(unsigned i = 0; i<table[TmpClassName].size(); i++){
+            if(*$1==table[TmpClassName][i]->getName()){
+                p= new Variable(*$1,table[TmpClassName][i]->getType());
+                nasao=true;
+            }
+        }
+    }
+
+    if(!nasao){
+        p= new Variable(*$1, "don't_exists");
+    }
+
+
+
+
+    $$= p;
+    delete $1;
+}
+| id_token '(' ')'                  {
+    $$=new Function_call(*$1);
+    delete $1;
+}
+| id_token '.' id_token '(' ')'     {
+    $$=new Metod_call(*$1,*$3);
+    delete $1;
+    delete $3;
+}
+| id_token '.' id_token             {
+    $$=new Class_attribut_call(*$1,*$3);
+    delete $1;
+    delete $3;
+}
+| E '+' E                           {$$=  new Add($1,$3);}
+| intNum_token                      {$$ = new Integer("int", $1);}
+| doubleNum_token                   {$$ = new Double("double", $1);}
+| text_token                        {
+    $$ = new String("string", *$1);
+    delete $1;
+}
+;
+
+%%
+
+int main() {
+
+
+    //yydebug=1;
+
+    yyparse();
+
+
+
+    return 0;
+}
